@@ -226,6 +226,19 @@ def find_last_page(html: str) -> Optional[int]:
     return max(pages) if pages else None
 
 
+def is_private_list(html: str) -> bool:
+    """True, wenn moviepilot die Liste als privat und für uns unsichtbar markiert."""
+    script = BeautifulSoup(html, "html.parser").find("script", id="__NEXT_DATA__")
+    if not script:
+        return False
+    try:
+        props = json.loads(script.get_text())["props"]
+    except (ValueError, KeyError, TypeError):
+        return False
+    page_props = props.get("initialProps", {}).get("pageProps") or props.get("pageProps") or {}
+    return bool(page_props.get("isPrivate")) and page_props.get("isVisibleToCurrentUser") is False
+
+
 def looks_like_login_page(html: str) -> bool:
     soup = BeautifulSoup(html, "html.parser")
     title = soup.title.get_text(" ", strip=True).lower() if soup.title else ""

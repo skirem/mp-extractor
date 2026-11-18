@@ -11,7 +11,13 @@ from typing import Callable, Optional
 import requests
 
 from .models import MOVIE, SERIES, Rating
-from .parser import BASE_URL, find_last_page, looks_like_login_page, parse_ratings_page
+from .parser import (
+    BASE_URL,
+    find_last_page,
+    is_private_list,
+    looks_like_login_page,
+    parse_ratings_page,
+)
 
 log = logging.getLogger(__name__)
 
@@ -86,6 +92,12 @@ class MoviepilotClient:
 
             if page == 1:
                 last_page = find_last_page(html)
+                if not page_ratings and is_private_list(html):
+                    raise ExtractionError(
+                        f"Die Bewertungen von {username} sind auf moviepilot privat. "
+                        "Entweder im Profil öffentlich schalten oder die Cookies deiner "
+                        "eingeloggten Browser-Sitzung übergeben (--cookie oder --cookie-file)."
+                    )
                 if not page_ratings and looks_like_login_page(html):
                     raise ExtractionError(
                         "moviepilot verlangt einen Login für diese Liste. "

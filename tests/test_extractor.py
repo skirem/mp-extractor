@@ -164,3 +164,9 @@ def test_cli_offline(tmp_path, capsys):
 
 def test_cli_requires_input(capsys):
     assert cli.main([]) == 2
+
+
+def test_client_detects_private_list():
+    session = FakeSession({ratings_url("privatuser", MOVIE): fixture("private_page.html")})
+    with pytest.raises(ExtractionError, match="privat"):
+        MoviepilotClient(session=session).fetch_ratings("privatuser", MOVIE)
