@@ -261,3 +261,17 @@ def test_cli_trakt_no_ids_skips_detail_pages(monkeypatch, tmp_path):
     assert not called
     assert cli.main(["u", "-t", "movies", "-f", "trakt", "-o", str(tmp_path)]) == 0
     assert called
+
+
+def test_cli_trakt_separates_titles_without_imdb_id(monkeypatch, tmp_path):
+    def fake_ids(client, ratings, cache):
+        ratings[0].imdb_id = "tt1032755"
+
+    monkeypatch.setattr(cli, "add_external_ids", fake_ids)
+    monkeypatch.setattr(cli.MoviepilotClient, "fetch_ratings",
+                        lambda self, user, kind: parse_ratings_page(fixture("next_items_page.html"), kind))
+    assert cli.main(["u", "-t", "movies", "-f", "trakt", "-o", str(tmp_path)]) == 0
+    main = (tmp_path / "moviepilot_u.trakt.csv").read_text(encoding="utf-8")
+    rest = (tmp_path / "moviepilot_u.trakt-ohne-id.csv").read_text(encoding="utf-8")
+    assert "RocknRolla" in main and "Ohne Jahr" not in main
+    assert "Ohne Jahr" in rest and "RocknRolla" not in rest

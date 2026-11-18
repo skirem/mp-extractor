@@ -86,9 +86,15 @@ def main(argv: list[str] | None = None) -> int:
     if not ratings:
         print("Warnung: keine Bewertungen gefunden.", file=sys.stderr)
 
+    # Mit geladenen IDs kommen Titel ohne IMDb-ID in eine eigene Datei, damit Trakt
+    # nichts über Titel/Jahr raten muss (das führte im Test zu falschen Treffern).
+    with_ids = any(r.imdb_id for r in ratings)
+    trakt_rows = [r for r in ratings if r.imdb_id] if with_ids else ratings
+    without_id = [r for r in ratings if not r.imdb_id] if with_ids else []
+
     def render(fmt: str) -> str:
         if fmt == "trakt":
-            return to_trakt_csv(ratings, watched=args.trakt_watched)
+            return to_trakt_csv(trakt_rows, watched=args.trakt_watched)
         return FORMATS[fmt](ratings, args.username)
 
     if args.stdout:
@@ -103,9 +109,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Geschrieben: {path}", file=sys.stderr)
     counts = ", ".join(f"{sum(r.kind == k for r in ratings)} {k}" for k in kinds)
     print(f"Fertig: {counts}.", file=sys.stderr)
-    if "trakt" in formats:
-        missing = [r.title for r in ratings if not r.imdb_id]
-        if missing:
-            print(f"Hinweis: {len(missing)} Titel ohne IMDb-ID (Trakt kann sie evtl. nicht zuordnen): "
-                  + ", ".join(missing[:10]) + (" …" if len(missing) > 10 else ""), file=sys.stderr)
+    if "trakt" in formats and without_id:
+        path = args.output_dir / f"{stem}.trakt-ohne-id.csv"
+        path.write_text(to_trakt_csv(without_id, watched=args.trakt_watched), encoding="utf-8")
+        titles = ", ".join(r.title for r in without_id[:10]) + (" …" if len(without_id) > 10 else "")
+        print(f"Hinweis: {len(without_id)} Titel ohne IMDb-ID stehen getrennt in {path} "
+              f"(bitte von Hand bei Trakt eintragen): {titles}", file=sys.stderr)
     return 0
