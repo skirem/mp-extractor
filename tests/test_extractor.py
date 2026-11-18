@@ -250,3 +250,14 @@ def test_cli_limit_offline(capsys):
     files = [str(FIXTURES / n) for n in ("movies_page1.html", "movies_page2.html")]
     assert cli.main(["--from-html", *files, "--stdout", "-f", "csv", "--limit", "1"]) == 0
     assert capsys.readouterr().out.count("\n") == 2  # Kopfzeile + 1 Eintrag
+
+
+def test_cli_trakt_no_ids_skips_detail_pages(monkeypatch, tmp_path):
+    called = []
+    monkeypatch.setattr(cli, "add_external_ids", lambda *a: called.append(a))
+    monkeypatch.setattr(cli.MoviepilotClient, "fetch_ratings",
+                        lambda self, user, kind: parse_ratings_page(fixture("next_items_page.html"), kind))
+    assert cli.main(["u", "-t", "movies", "-f", "trakt", "--no-ids", "-o", str(tmp_path)]) == 0
+    assert not called
+    assert cli.main(["u", "-t", "movies", "-f", "trakt", "-o", str(tmp_path)]) == 0
+    assert called

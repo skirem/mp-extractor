@@ -91,6 +91,8 @@ eine Anfrage pro Titel, bei ~1300 Titeln also rund eine halbe Stunde. Die IDs we
 
 - Trakt kennt nur ganze Zahlen von 1 bis 10: halbe Punkte werden **aufgerundet**
   (7,5 → 8), 0 und 0,5 werden zu 1.
+- `--no-ids` überspringt den ID-Abruf (dauert dann nur ~1 Minute). Trakt muss die
+  Titel dann über Titel und Jahr finden, was bei deutschen Titeln unsicherer ist.
 - `--trakt-watched` markiert alle bewerteten Titel zusätzlich als gesehen
   (Datum = Bewertungsdatum).
 

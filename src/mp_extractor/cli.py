@@ -34,6 +34,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Nur ein Format direkt auf die Standardausgabe schreiben")
     p.add_argument("--with-ids", action="store_true",
                    help="IMDb-/TVDB-IDs von den Detailseiten laden (ca. 1–2 s pro Titel, wird gecacht)")
+    p.add_argument("--no-ids", action="store_true",
+                   help="Bei -f trakt keine IDs laden (schnell; Trakt muss dann über Titel und Jahr zuordnen)")
     p.add_argument("--trakt-watched", action="store_true",
                    help="In der Trakt-Datei alle bewerteten Titel auch als gesehen markieren")
     p.add_argument("--limit", type=int, metavar="N",
@@ -75,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
             ratings = []
             for kind in kinds:
                 ratings += client.fetch_ratings(args.username, kind)[: args.limit]
-            if args.with_ids or "trakt" in formats:
+            if args.with_ids or ("trakt" in formats and not args.no_ids):
                 add_external_ids(client, ratings, args.output_dir / ".mp-extractor-ids.json")
     except (ExtractionError, requests.RequestException, OSError) as exc:
         print(f"Fehler: {exc}", file=sys.stderr)
