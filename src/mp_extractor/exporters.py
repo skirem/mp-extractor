@@ -51,7 +51,9 @@ def to_csv(ratings: list[Rating]) -> str:
     writer = csv.DictWriter(buffer, fieldnames=Rating.field_names(), lineterminator="\n")
     writer.writeheader()
     for r in _sorted(ratings):
-        writer.writerow(r.to_dict())
+        row = r.to_dict()
+        row["genres"] = ", ".join(r.genres)
+        writer.writerow(row)
     return buffer.getvalue()
 
 
@@ -87,13 +89,13 @@ def to_markdown(ratings: list[Rating], username: Optional[str] = None) -> str:
             bar = "█" * max(1, round(20 * count / top))
             lines.append(f"    {value.replace('.', ','):>4}  {bar} {count}")
         lines += ["", "### Alle Bewertungen", "",
-                  "| Bewertung | Titel | Jahr | Land | Bewertet am |",
-                  "|---:|---|---:|---|---|"]
+                  "| Bewertung | Titel | Jahr | Land | Genres | Bewertet am |",
+                  "|---:|---|---:|---|---|---|"]
         for r in items:
             title = f"[{_md_escape(r.title)}]({r.url})" if r.url else _md_escape(r.title)
             rated_at = datetime.fromisoformat(r.rated_at).strftime("%d.%m.%Y") if r.rated_at else ""
             lines.append(f"| {_fmt_rating(r.rating)} | {title} | {r.year or ''} "
-                         f"| {_md_escape(r.country or '')} | {rated_at} |")
+                         f"| {_md_escape(r.country or '')} | {_md_escape(', '.join(r.genres))} | {rated_at} |")
         lines.append("")
     return "\n".join(lines)
 

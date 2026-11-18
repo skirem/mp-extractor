@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 from typing import Optional
 
 MOVIE = "movie"
@@ -25,6 +25,9 @@ class Rating:
     year: Optional[int] = None
     country: Optional[str] = None
     rated_at: Optional[str] = None  # ISO-8601-Datum, z. B. "2019-04-02"
+    genres: list[str] = field(default_factory=list)
+    community_rating: Optional[float] = None  # Schnitt der moviepilot-Community, 0.0–10.0
+    moviepilot_id: Optional[int] = None
 
     def to_dict(self) -> dict:
         return asdict(self)

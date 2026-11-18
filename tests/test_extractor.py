@@ -170,3 +170,29 @@ def test_client_detects_private_list():
     session = FakeSession({ratings_url("privatuser", MOVIE): fixture("private_page.html")})
     with pytest.raises(ExtractionError, match="privat"):
         MoviepilotClient(session=session).fetch_ratings("privatuser", MOVIE)
+
+
+def test_parse_current_next_items_layout():
+    rocknrolla, series = parse_ratings_page(fixture("next_items_page.html"))
+    assert rocknrolla.title == "RocknRolla"
+    assert rocknrolla.kind == MOVIE
+    assert rocknrolla.rating == 10.0
+    assert rocknrolla.rated_at == "2010-12-08"
+    assert rocknrolla.year == 2008
+    assert rocknrolla.country == "USA, Großbritannien, Frankreich"
+    assert rocknrolla.genres == ["Kriminalfilm", "Komödie"]
+    assert rocknrolla.community_rating == 7.3
+    assert rocknrolla.moviepilot_id == 18755
+    assert rocknrolla.url == "https://www.moviepilot.de/movies/rocknrolla-2"
+    assert series.kind == SERIES and series.rating == 3.5
+    assert series.year is None and series.rated_at is None and series.community_rating is None
+
+
+def test_page_count_from_next_data():
+    from mp_extractor.parser import find_last_page
+    assert find_last_page(fixture("next_items_page.html")) == 2
+
+
+def test_csv_joins_genres():
+    rows = list(csv.DictReader(io.StringIO(to_csv(parse_ratings_page(fixture("next_items_page.html"))))))
+    assert rows[0]["genres"] == "Kriminalfilm, Komödie"

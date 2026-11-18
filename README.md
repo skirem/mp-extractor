@@ -35,7 +35,12 @@ Geladen werden die Seiten `/users/<nutzername>/rated/movies` und `/rated/series`
 inklusive aller Unterseiten (`?page=2`, …). Zwischen den Abrufen wird 1,5 s gewartet
 (`--delay`), um moviepilot nicht zu belasten.
 
-**Login nötig?** Wenn deine Listen nicht öffentlich sind, meldet das Tool das. Dann:
+**Profil privat?** Dann bricht das Tool mit einem Hinweis ab. Am einfachsten in den
+moviepilot-Profileinstellungen **„Mein Profil öffentlich zeigen“** und **„Meine Bewertungen
+in meinem Profil öffentlich zeigen“** anhaken. „Bewertungen öffentlich“ allein reicht nicht.
+Danach kannst du die Haken wieder entfernen.
+
+Alternativ mit Login-Cookies:
 
 1. Im Browser bei moviepilot einloggen.
 2. Entwicklertools (F12) → *Netzwerk* → Seite neu laden → bei einer Anfrage an
@@ -85,6 +90,9 @@ Jede Bewertung hat diese Felder (in JSON und CSV identisch):
 | `year` | `1979` | Produktionsjahr |
 | `country` | `USA` | Produktionsland |
 | `rated_at` | `2019-04-02` | Datum der Bewertung (ISO 8601) |
+| `genres` | `["Kriminalfilm", "Komödie"]` | Genres (in der CSV kommagetrennt) |
+| `community_rating` | `7.3` | Durchschnitt der moviepilot-Community, 0.0–10.0 |
+| `moviepilot_id` | `18755` | Interne ID bei moviepilot |
 
 Die JSON-Datei enthält zusätzlich `stats` je Typ (Anzahl, Durchschnitt, Median, Verteilung).
 
@@ -96,8 +104,9 @@ pytest
 ```
 
 Die Tests laufen ohne Netzwerk gegen Beispielseiten in `tests/fixtures/`.
-Der Parser liest die klassische Tabellenansicht von moviepilot und hat einen
-Fallback für die in Next.js eingebetteten JSON-Daten (`__NEXT_DATA__`). Ändert
+Der Parser liest die in Next.js eingebetteten Seitendaten (`__NEXT_DATA__` →
+`pageProps.items`, Stand November 2026) und hat Fallbacks für die ältere
+Tabellenansicht. Ändert
 moviepilot das Layout, ist `src/mp_extractor/parser.py` die Stelle zum Anpassen.
 
 ## Hinweis

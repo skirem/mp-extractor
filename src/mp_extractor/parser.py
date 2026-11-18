@@ -75,10 +75,86 @@ def _slug(path: str) -> Optional[str]:
 def parse_ratings_page(html: str, default_kind: str = MOVIE) -> list[Rating]:
     """Extrahiert alle Bewertungen einer einzelnen Listenseite."""
     soup = BeautifulSoup(html, "html.parser")
-    ratings = _parse_table(soup, default_kind)
-    if not ratings:
-        ratings = _parse_next_data(soup, default_kind)
+    return (
+        _parse_page_items(_page_props(soup), default_kind)
+        or _parse_table(soup, default_kind)
+        or _parse_next_data(soup, default_kind)
+    )
+
+
+def _page_props(soup: BeautifulSoup) -> dict:
+    """``pageProps`` aus den eingebetteten Next.js-Daten (leer, wenn nicht vorhanden)."""
+    script = soup.find("script", id="__NEXT_DATA__")
+    if not script:
+        return {}
+    try:
+        props = json.loads(script.get_text())["props"]
+    except (ValueError, KeyError, TypeError):
+        return {}
+    page_props = props.get("initialProps", {}).get("pageProps") or props.get("pageProps")
+    return page_props if isinstance(page_props, dict) else {}
+
+
+# --- Aktuelles Layout (Next.js, Stand 2026) ---------------------------------
+# pageProps.items[] = {id, itemType, title, path, rating: {value: 0–100},
+#                      dateOfRating: "08.12.2010", metaYearAndCountry: "USA, Frankreich - 2008",
+#                      metaInformation: [..HTML mit itemprop="genre"..], averageCommunityRating}
+
+_YEAR_AND_COUNTRY_RE = re.compile(r"^(?P<country>.*?)\s*-\s*(?P<year>\d{4})\s*$")
+
+
+def _parse_page_items(page_props: dict, default_kind: str) -> list[Rating]:
+    items = page_props.get("items")
+    if not isinstance(items, list):
+        return []
+    ratings = []
+    for item in items:
+        if isinstance(item, dict) and isinstance(item.get("title"), str):
+            ratings.append(_rating_from_item(item, default_kind))
     return ratings
+
+
+def _rating_from_item(item: dict, default_kind: str) -> Rating:
+    path = item.get("path") if isinstance(item.get("path"), str) else ""
+    item_type = str(item.get("itemType", "")).lower()
+    kind = MOVIE if item_type == "movie" else SERIES if item_type.startswith("serie") else None
+
+    raw = item.get("rating")
+    raw = raw.get("value") if isinstance(raw, dict) else raw
+    rated_at = item.get("dateOfRating")
+    if not rated_at and isinstance(item.get("rating"), dict):
+        rated_at = item["rating"].get("createdAt")
+
+    country = year = None
+    meta = item.get("metaYearAndCountry")
+    if isinstance(meta, str):
+        match = _YEAR_AND_COUNTRY_RE.match(meta.strip())
+        if match:
+            country, year = match.group("country") or None, int(match.group("year"))
+        elif meta.strip().isdigit():
+            year = int(meta.strip())
+
+    genres: list[str] = []
+    for snippet in item.get("metaInformation") or []:
+        for span in BeautifulSoup(str(snippet), "html.parser").find_all(attrs={"itemprop": "genre"}):
+            genre = span.get_text(strip=True)
+            if genre and genre not in genres:
+                genres.append(genre)
+
+    community = item.get("averageCommunityRating")
+    return Rating(
+        kind=kind or kind_from_path(path, default_kind),
+        title=item["title"].strip(),
+        rating=parse_rating_value(raw, percent=True),
+        url=urljoin(BASE_URL, path) if path else None,
+        slug=_slug(path) if path else None,
+        year=year,
+        country=country,
+        rated_at=parse_date(rated_at),
+        genres=genres,
+        community_rating=round(community / 10, 1) if isinstance(community, (int, float)) and community else None,
+        moviepilot_id=item["id"] if isinstance(item.get("id"), int) else None,
+    )
 
 
 def _parse_table(soup: BeautifulSoup, default_kind: str) -> list[Rating]:
@@ -221,21 +297,17 @@ def _rating_from_json(node: dict, default_kind: str) -> Optional[Rating]:
 
 
 def find_last_page(html: str) -> Optional[int]:
-    """Höchste in der Paginierung verlinkte Seitennummer (falls vorhanden)."""
+    """Anzahl der Seiten laut Next.js-Daten, sonst höchste verlinkte Seitennummer."""
+    pages_count = _page_props(BeautifulSoup(html, "html.parser")).get("pagesCount")
+    if isinstance(pages_count, int):
+        return pages_count
     pages = [int(m) for m in re.findall(r"[?&](?:amp;)?page=(\d+)", html)]
     return max(pages) if pages else None
 
 
 def is_private_list(html: str) -> bool:
     """True, wenn moviepilot die Liste als privat und für uns unsichtbar markiert."""
-    script = BeautifulSoup(html, "html.parser").find("script", id="__NEXT_DATA__")
-    if not script:
-        return False
-    try:
-        props = json.loads(script.get_text())["props"]
-    except (ValueError, KeyError, TypeError):
-        return False
-    page_props = props.get("initialProps", {}).get("pageProps") or props.get("pageProps") or {}
+    page_props = _page_props(BeautifulSoup(html, "html.parser"))
     return bool(page_props.get("isPrivate")) and page_props.get("isVisibleToCurrentUser") is False
 
 
