@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 import statistics
 from collections import Counter
 from datetime import datetime, timezone
@@ -100,8 +101,39 @@ def to_markdown(ratings: list[Rating], username: Optional[str] = None) -> str:
     return "\n".join(lines)
 
 
+def trakt_rating(value: Optional[float]) -> Optional[int]:
+    """moviepilot 0–10 (halbe Punkte) -> Trakt 1–10 (ganze Zahlen), halbe Punkte aufgerundet."""
+    return None if value is None else max(1, math.ceil(value))
+
+
+TRAKT_COLUMNS = ["type", "title", "year", "imdb_id", "tvdb_id", "rating", "rated_at", "watched_at"]
+
+
+def to_trakt_csv(ratings: list[Rating], watched: bool = False) -> str:
+    """CSV für den Datei-Import von Trakt (Einstellungen -> Import)."""
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=TRAKT_COLUMNS, lineterminator="\n")
+    writer.writeheader()
+    for r in _sorted(ratings):
+        timestamp = f"{r.rated_at}T12:00:00.000Z" if r.rated_at else ""
+        writer.writerow({
+            "type": "show" if r.kind == SERIES else "movie",
+            "title": r.title,
+            "year": r.year or "",
+            "imdb_id": r.imdb_id or "",
+            "tvdb_id": (r.tvdb_id or "") if r.kind == SERIES else "",
+            "rating": trakt_rating(r.rating) or "",
+            "rated_at": timestamp,
+            "watched_at": timestamp if watched else "",
+        })
+    return buffer.getvalue()
+
+
 FORMATS = {
     "json": lambda ratings, username: to_json(ratings, username),
     "csv": lambda ratings, username: to_csv(ratings),
     "md": lambda ratings, username: to_markdown(ratings, username),
+    "trakt": lambda ratings, username: to_trakt_csv(ratings),
 }
+DEFAULT_FORMATS = ["json", "csv", "md"]
+EXTENSIONS = {"trakt": "trakt.csv"}

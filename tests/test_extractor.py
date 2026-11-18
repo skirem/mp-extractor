@@ -196,3 +196,57 @@ def test_page_count_from_next_data():
 def test_csv_joins_genres():
     rows = list(csv.DictReader(io.StringIO(to_csv(parse_ratings_page(fixture("next_items_page.html"))))))
     assert rows[0]["genres"] == "Kriminalfilm, Komödie"
+
+
+DETAIL_PAGE = (
+    '<script id="__NEXT_DATA__">{"item":{"imdbId":"tt1032755","tvdbId":"360893"},'
+    '"related":[{"imdbId":"tt0000001"}],"seo":{"imdbId":"tt1032755"}}</script>'
+)
+
+
+def test_parse_external_ids_prefers_most_common():
+    from mp_extractor.parser import parse_external_ids
+    assert parse_external_ids(DETAIL_PAGE) == ("tt1032755", "360893")
+    assert parse_external_ids("<html></html>") == (None, None)
+
+
+@pytest.mark.parametrize("value,expected", [(0.0, 1), (0.5, 1), (7.0, 7), (7.5, 8), (9.5, 10), (10.0, 10), (None, None)])
+def test_trakt_rating_rounds_half_points_up(value, expected):
+    from mp_extractor.exporters import trakt_rating
+    assert trakt_rating(value) == expected
+
+
+def test_add_external_ids_uses_cache(tmp_path):
+    from mp_extractor.client import add_external_ids
+    ratings = parse_ratings_page(fixture("next_items_page.html"))
+    session = FakeSession({r.url: DETAIL_PAGE for r in ratings})
+    client = MoviepilotClient(session=session, sleep=lambda s: None)
+    cache = tmp_path / "ids.json"
+
+    add_external_ids(client, ratings, cache)
+    assert ratings[0].imdb_id == "tt1032755"
+    assert len(session.requested) == 2
+
+    fresh = parse_ratings_page(fixture("next_items_page.html"))
+    add_external_ids(client, fresh, cache)
+    assert len(session.requested) == 2  # alles aus dem Cache
+    assert fresh[1].tvdb_id == "360893"
+
+
+def test_trakt_csv():
+    from mp_extractor.exporters import to_trakt_csv
+    ratings = parse_ratings_page(fixture("next_items_page.html"))
+    ratings[0].imdb_id = "tt1032755"
+    ratings[1].imdb_id, ratings[1].tvdb_id = "tt7366338", "360893"
+    rows = list(csv.DictReader(io.StringIO(to_trakt_csv(ratings))))
+    assert rows[0] == {"type": "movie", "title": "RocknRolla", "year": "2008", "imdb_id": "tt1032755",
+                       "tvdb_id": "", "rating": "10", "rated_at": "2010-12-08T12:00:00.000Z", "watched_at": ""}
+    assert rows[1]["type"] == "show" and rows[1]["rating"] == "4" and rows[1]["tvdb_id"] == "360893"
+    watched = list(csv.DictReader(io.StringIO(to_trakt_csv(ratings, watched=True))))
+    assert watched[0]["watched_at"] == "2010-12-08T12:00:00.000Z"
+
+
+def test_cli_limit_offline(capsys):
+    files = [str(FIXTURES / n) for n in ("movies_page1.html", "movies_page2.html")]
+    assert cli.main(["--from-html", *files, "--stdout", "-f", "csv", "--limit", "1"]) == 0
+    assert capsys.readouterr().out.count("\n") == 2  # Kopfzeile + 1 Eintrag

@@ -76,6 +76,24 @@ mp-extractor [nutzername] [-t {movies,series,all}] [-o ORDNER] [-f {json,csv,md}
 mp-extractor DEIN_NUTZERNAME -f json --stdout | jq '.ratings[] | select(.rating >= 9) | .title'
 ```
 
+### Umzug zu Trakt
+
+```bash
+mp-extractor DEIN_NUTZERNAME -f trakt --limit 10   # erst mit 10 Filmen + 10 Serien testen
+mp-extractor DEIN_NUTZERNAME -f trakt              # dann alles
+```
+
+Erzeugt `moviepilot_<name>.trakt.csv` für den Datei-Import auf trakt.tv
+(Einstellungen → Import). Trakt ordnet Titel über IDs zu, deshalb lädt das Tool für
+jeden Titel die IMDb-ID (Serien zusätzlich die TVDB-ID) von der moviepilot-Detailseite:
+eine Anfrage pro Titel, bei ~1300 Titeln also rund eine halbe Stunde. Die IDs werden in
+`export/.mp-extractor-ids.json` gecacht, ein zweiter Lauf ist schnell.
+
+- Trakt kennt nur ganze Zahlen von 1 bis 10: halbe Punkte werden **aufgerundet**
+  (7,5 → 8), 0 und 0,5 werden zu 1.
+- `--trakt-watched` markiert alle bewerteten Titel zusätzlich als gesehen
+  (Datum = Bewertungsdatum).
+
 ## Datenformat
 
 Jede Bewertung hat diese Felder (in JSON und CSV identisch):
@@ -93,6 +111,7 @@ Jede Bewertung hat diese Felder (in JSON und CSV identisch):
 | `genres` | `["Kriminalfilm", "Komödie"]` | Genres (in der CSV kommagetrennt) |
 | `community_rating` | `7.3` | Durchschnitt der moviepilot-Community, 0.0–10.0 |
 | `moviepilot_id` | `18755` | Interne ID bei moviepilot |
+| `imdb_id`, `tvdb_id` | `tt1032755` | Nur mit `--with-ids` oder `-f trakt` |
 
 Die JSON-Datei enthält zusätzlich `stats` je Typ (Anzahl, Durchschnitt, Median, Verteilung).
 

@@ -28,6 +28,8 @@ class Rating:
     genres: list[str] = field(default_factory=list)
     community_rating: Optional[float] = None  # Schnitt der moviepilot-Community, 0.0–10.0
     moviepilot_id: Optional[int] = None
+    imdb_id: Optional[str] = None  # nur mit --with-ids bzw. -f trakt
+    tvdb_id: Optional[str] = None
 
     def to_dict(self) -> dict:
         return asdict(self)

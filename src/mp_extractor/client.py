@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import http.cookiejar
+import json
 import logging
 import time
 from pathlib import Path
@@ -16,6 +17,7 @@ from .parser import (
     find_last_page,
     is_private_list,
     looks_like_login_page,
+    parse_external_ids,
     parse_ratings_page,
 )
 
@@ -113,6 +115,43 @@ class MoviepilotClient:
             if not new or (last_page is not None and page >= last_page):
                 break
         return ratings
+
+
+def add_external_ids(client: "MoviepilotClient", ratings: list[Rating], cache_file: Path) -> None:
+    """Ergänzt IMDb-/TVDB-IDs über die Detailseiten (eine Anfrage pro Titel).
+
+    Gefundene IDs werden in ``cache_file`` gemerkt, damit ein erneuter Lauf schnell ist.
+    """
+    cache: dict = {}
+    if cache_file.exists():
+        cache = json.loads(cache_file.read_text(encoding="utf-8"))
+
+    def save() -> None:
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        cache_file.write_text(json.dumps(cache, indent=1, sort_keys=True), encoding="utf-8")
+
+    todo = [r for r in ratings if r.url and r.url not in cache]
+    log.info("IDs: %d im Cache, %d werden geladen", len(ratings) - len(todo), len(todo))
+    try:
+        for i, r in enumerate(todo, 1):
+            if i > 1:
+                client._sleep(client.delay)
+            try:
+                imdb_id, tvdb_id = parse_external_ids(client.fetch(r.url))
+            except (ExtractionError, requests.RequestException) as exc:
+                log.warning("Keine IDs für %s: %s", r.title, exc)
+                continue
+            cache[r.url] = {"imdb_id": imdb_id, "tvdb_id": tvdb_id}
+            if i % 25 == 0:
+                log.warning("IDs: %d/%d geladen", i, len(todo))
+                save()
+    finally:
+        save()
+
+    for r in ratings:
+        ids = cache.get(r.url or "", {})
+        r.imdb_id = ids.get("imdb_id")
+        r.tvdb_id = ids.get("tvdb_id")
 
 
 def parse_files(paths: list[Path], kind: Optional[str] = None) -> list[Rating]:

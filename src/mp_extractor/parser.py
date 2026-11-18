@@ -305,6 +305,23 @@ def find_last_page(html: str) -> Optional[int]:
     return max(pages) if pages else None
 
 
+_IMDB_ID_RE = re.compile(r'"imdbId"\s*:\s*"(tt\d+)"')
+_TVDB_ID_RE = re.compile(r'"tvdbId"\s*:\s*"?(\d+)"?')
+
+
+def parse_external_ids(html: str) -> tuple[Optional[str], Optional[str]]:
+    """IMDb- und TVDB-ID von einer Film- oder Serien-Detailseite.
+
+    Eine Seite kann auch IDs verwandter Titel enthalten; die eigene kommt am häufigsten vor.
+    """
+
+    def most_common(pattern: re.Pattern) -> Optional[str]:
+        found = pattern.findall(html)
+        return max(set(found), key=found.count) if found else None
+
+    return most_common(_IMDB_ID_RE), most_common(_TVDB_ID_RE)
+
+
 def is_private_list(html: str) -> bool:
     """True, wenn moviepilot die Liste als privat und für uns unsichtbar markiert."""
     page_props = _page_props(BeautifulSoup(html, "html.parser"))

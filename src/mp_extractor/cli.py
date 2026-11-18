@@ -9,8 +9,8 @@ from pathlib import Path
 
 import requests
 
-from .client import ExtractionError, MoviepilotClient, load_cookies, parse_files
-from .exporters import FORMATS
+from .client import ExtractionError, MoviepilotClient, add_external_ids, load_cookies, parse_files
+from .exporters import DEFAULT_FORMATS, EXTENSIONS, FORMATS, to_trakt_csv
 from .models import KINDS, MOVIE, SERIES
 
 TYPE_CHOICES = {"movies": [MOVIE], "series": [SERIES], "all": list(KINDS)}
@@ -28,9 +28,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-o", "--output-dir", type=Path, default=Path("export"),
                    help="Zielordner (Standard: ./export)")
     p.add_argument("-f", "--format", dest="formats", action="append", choices=FORMATS,
-                   help="Ausgabeformat, mehrfach angebbar (Standard: json, csv und md)")
+                   help="Ausgabeformat, mehrfach angebbar (Standard: json, csv und md). "
+                        "'trakt' erzeugt eine Importdatei für trakt.tv und lädt dafür die IMDb-IDs")
     p.add_argument("--stdout", action="store_true",
                    help="Nur ein Format direkt auf die Standardausgabe schreiben")
+    p.add_argument("--with-ids", action="store_true",
+                   help="IMDb-/TVDB-IDs von den Detailseiten laden (ca. 1–2 s pro Titel, wird gecacht)")
+    p.add_argument("--trakt-watched", action="store_true",
+                   help="In der Trakt-Datei alle bewerteten Titel auch als gesehen markieren")
+    p.add_argument("--limit", type=int, metavar="N",
+                   help="Nur die ersten N Einträge je Liste exportieren (zum Testen)")
     p.add_argument("--from-html", nargs="+", type=Path, metavar="DATEI",
                    help="Offline-Modus: gespeicherte HTML-Seiten statt Download einlesen")
     p.add_argument("--cookie", help='Cookie-Header aus dem Browser, z. B. "_session=..."')
@@ -47,7 +54,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING,
                         format="%(message)s", stream=sys.stderr)
     kinds = TYPE_CHOICES[args.type]
-    formats = args.formats or list(FORMATS)
+    formats = args.formats or DEFAULT_FORMATS
 
     if not args.username and not args.from_html:
         print("Fehler: Nutzername oder --from-html angeben (siehe --help).", file=sys.stderr)
@@ -60,12 +67,16 @@ def main(argv: list[str] | None = None) -> int:
         if args.from_html:
             kind = kinds[0] if len(kinds) == 1 else None
             ratings = [r for r in parse_files(args.from_html, kind) if r.kind in kinds]
+            if args.limit:
+                ratings = [r for k in kinds for r in [x for x in ratings if x.kind == k][: args.limit]]
         else:
             client = MoviepilotClient(delay=args.delay, max_pages=args.max_pages)
             load_cookies(client.session, args.cookie, args.cookie_file)
             ratings = []
             for kind in kinds:
-                ratings += client.fetch_ratings(args.username, kind)
+                ratings += client.fetch_ratings(args.username, kind)[: args.limit]
+            if args.with_ids or "trakt" in formats:
+                add_external_ids(client, ratings, args.output_dir / ".mp-extractor-ids.json")
     except (ExtractionError, requests.RequestException, OSError) as exc:
         print(f"Fehler: {exc}", file=sys.stderr)
         return 1
@@ -73,16 +84,26 @@ def main(argv: list[str] | None = None) -> int:
     if not ratings:
         print("Warnung: keine Bewertungen gefunden.", file=sys.stderr)
 
+    def render(fmt: str) -> str:
+        if fmt == "trakt":
+            return to_trakt_csv(ratings, watched=args.trakt_watched)
+        return FORMATS[fmt](ratings, args.username)
+
     if args.stdout:
-        sys.stdout.write(FORMATS[formats[0]](ratings, args.username))
+        sys.stdout.write(render(formats[0]))
         return 0
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     stem = f"moviepilot_{args.username}" if args.username else "moviepilot"
     for fmt in formats:
-        path = args.output_dir / f"{stem}.{fmt}"
-        path.write_text(FORMATS[fmt](ratings, args.username), encoding="utf-8")
+        path = args.output_dir / f"{stem}.{EXTENSIONS.get(fmt, fmt)}"
+        path.write_text(render(fmt), encoding="utf-8")
         print(f"Geschrieben: {path}", file=sys.stderr)
     counts = ", ".join(f"{sum(r.kind == k for r in ratings)} {k}" for k in kinds)
     print(f"Fertig: {counts}.", file=sys.stderr)
+    if "trakt" in formats:
+        missing = [r.title for r in ratings if not r.imdb_id]
+        if missing:
+            print(f"Hinweis: {len(missing)} Titel ohne IMDb-ID (Trakt kann sie evtl. nicht zuordnen): "
+                  + ", ".join(missing[:10]) + (" …" if len(missing) > 10 else ""), file=sys.stderr)
     return 0
